@@ -6,16 +6,26 @@ using namespace std;
 
 int main(int argc, char *argv[]) {
 
+    const struct option long_options[] = {
+        {"help",    no_argument, 0, 'h'},
+        {"version", no_argument, 0, 'v'},
+        {0, 0, 0, 0}
+    };
+
     int opt;
-    
-    while ((opt = getopt(argc, argv, ":hv")) != -1) {
+    int option_index = 0;
+
+    while((opt = getopt_long(argc, argv, "hv", long_options, &option_index)) != -1) {
         switch(opt) {
             case 'h':
-                cout << "Help: This program does something useful." << endl;
-                break;
+                print_help();
+                return 0;
             case 'v':
-                cout << "Version: " << PROJECT_VERSION << endl;
-                break;
+                cout << "blonde_mapper version " << PROJECT_VERSION << "\n";
+                return 0;
+            default:
+                print_help();
+                return 1;
         }
     }
 
