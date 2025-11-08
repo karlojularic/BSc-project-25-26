@@ -11,3 +11,7 @@ configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/version.h.in
     ${CMAKE_CURRENT_BINARY_DIR}/version.h
 )
+
+add_subdirectory(external/bioparser)
+target_link_libraries(blonde_mapper PRIVATE bioparser)
+target_include_directories(blonde_mapper PRIVATE external/bioparser/include)
