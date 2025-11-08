@@ -10,6 +10,11 @@
 
 using namespace std;
 
+struct Sequence {
+    std::string name;
+    std::string seq;
+};
+
 void print_help() {
     cout << "Usage: blonde_mapper [options] <file1> <file2>\n";
     cout << "Options:\n";
