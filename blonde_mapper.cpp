@@ -4,6 +4,13 @@
 
 using namespace std;
 
+void print_help() {
+    cout << "Usage: blonde_mapper [options] <file1> <file2>\n";
+    cout << "Options:\n";
+    cout << "  -h, --help       Prikaz pomoći\n";
+    cout << "  -v, --version    Prikaz verzije programa\n";
+}
+
 int main(int argc, char *argv[]) {
 
     const struct option long_options[] = {
