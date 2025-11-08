@@ -38,6 +38,26 @@ void print_help() {
     cout << "  -v, --version    Prikaz verzije programa\n";
 }
 
+size_t calculate_N50(const vector<size_t> &lengths) {
+    vector<size_t> sorted = lengths;
+    sort(sorted.begin(), sorted.end(), greater<size_t>());
+    size_t total = 0;
+    for (auto l : sorted) {
+        total += l;
+    }
+
+    size_t half_total = total / 2;
+    size_t running_total = 0;
+    for (auto l : sorted) {
+        running_total += l;
+        if (running_total >= half_total) {
+            return l;
+        }
+    }
+
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
 
     const struct option long_options[] = {
