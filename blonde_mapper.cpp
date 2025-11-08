@@ -29,6 +29,17 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    if (optind + 2 != argc) {
+        cerr << "Error: two arguments are expected.\n";
+        print_help();
+        return 1;
+    }
+
+    string file1 = argv[optind];
+    string file2 = argv[optind + 1];
+    cout << "Input file 1: " << file1 << "\n";
+    cout << "Input file 2: " << file2 << "\n";
+
     return 0;
     
 }
