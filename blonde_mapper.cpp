@@ -94,6 +94,58 @@ int main(int argc, char *argv[]) {
     cout << "Input file 1: " << file1 << "\n";
     cout << "Input file 2: " << file2 << "\n";
 
+    vector<Sequence> references;
+    auto ref_parser = bioparser::Parser<Sequence>::Create<bioparser::FastaParser>(file1);
+    auto ref_seqs = ref_parser->Parse(-1);  // -1 znaci parsiranje cijele datoteke
+
+    for (auto &seq_ptr : ref_seqs) {
+        references.push_back(*seq_ptr);
+    }
+
+
+    vector<Sequence> fragments;
+    if (file2.find(".fastq") != string::npos) {
+        auto frag_parser = bioparser::Parser<Sequence>::Create<bioparser::FastqParser>(file2);
+        auto frag_seqs = frag_parser->Parse(-1);
+        for (auto &seq_ptr : frag_seqs) {
+            fragments.push_back(*seq_ptr);
+        }
+    } else {
+        auto frag_parser = bioparser::Parser<Sequence>::Create<bioparser::FastaParser>(file2);
+        auto frag_seqs = frag_parser->Parse(-1);
+        for (auto &seq_ptr : frag_seqs) {
+            fragments.push_back(*seq_ptr);
+        }
+    }
+
+
+    cerr << "Reference sequences:\n";
+    for (auto &seq : references) {
+        cerr << seq.name << " : " << seq.seq.length() << "\n";
+    }
+
+    size_t total_len = 0;
+    size_t min_len = SIZE_MAX;
+    size_t max_len = 0;
+    vector<size_t> lengths;
+    for (auto &f : fragments) {
+        size_t len = f.seq.length();
+        lengths.push_back(len);
+        total_len += len;
+        if (len < min_len) min_len = len;
+        if (len > max_len) max_len = len;
+    }
+
+    double avg_len = fragments.empty() ? 0 : static_cast<double>(total_len)/fragments.size();
+    size_t n50 = calculate_N50(lengths);
+
+    cerr << "\nFragment statistics:\n";
+    cerr << "Number of fragments: " << fragments.size() << "\n";
+    cerr << "Average length: " << avg_len << "\n";
+    cerr << "Min length: " << min_len << "\n";
+    cerr << "Max length: " << max_len << "\n";
+    cerr << "N50 length: " << n50 << "\n";
+
     return 0;
     
 }
