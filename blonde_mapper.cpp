@@ -1,5 +1,5 @@
 #include <iostream>
-#include <unistd.h>
+#include <getopt.h>
 #include "version.h"
 
 using namespace std;
