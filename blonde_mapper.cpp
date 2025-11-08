@@ -28,7 +28,7 @@ int main(int argc, char *argv[]) {
                 print_help();
                 return 0;
             case 'v':
-                cout << "blonde_mapper version " << PROJECT_VERSION << "\n";
+                cout << "v" << PROJECT_VERSION << "\n";
                 return 0;
             default:
                 print_help();
