@@ -1,6 +1,12 @@
 #include <iostream>
+#include <vector>
+#include <string>
+#include <algorithm>
 #include <getopt.h>
 #include "version.h"
+
+#include "bioparser/fasta_parser.hpp"
+#include "bioparser/fastq_parser.hpp"
 
 using namespace std;
 
