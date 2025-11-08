@@ -13,14 +13,12 @@ using namespace std;
 struct Sequence {
     std::string name;
     std::string seq;
-    std::string qual;  // za FASTQ
+    std::string qual;
 
-    // Fasta konstruktor
     Sequence(const char* n, std::uint32_t n_len,
              const char* s, std::uint32_t s_len)
         : name(n, n_len), seq(s, s_len) {}
 
-    // Fastq konstruktor
     Sequence(const char* n, std::uint32_t n_len,
              const char* s, std::uint32_t s_len,
              const char* q, std::uint32_t q_len)
