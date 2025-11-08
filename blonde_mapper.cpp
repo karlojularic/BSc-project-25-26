@@ -13,7 +13,23 @@ using namespace std;
 struct Sequence {
     std::string name;
     std::string seq;
+    std::string qual;  // za FASTQ
+
+    // Fasta konstruktor
+    Sequence(const char* n, std::uint32_t n_len,
+             const char* s, std::uint32_t s_len)
+        : name(n, n_len), seq(s, s_len) {}
+
+    // Fastq konstruktor
+    Sequence(const char* n, std::uint32_t n_len,
+             const char* s, std::uint32_t s_len,
+             const char* q, std::uint32_t q_len)
+        : name(n, n_len), seq(s, s_len), qual(q, q_len) {}
+
+    friend bioparser::FastaParser<Sequence>;
+    friend bioparser::FastqParser<Sequence>;
 };
+
 
 void print_help() {
     cout << "Usage: blonde_mapper [options] <file1> <file2>\n";
