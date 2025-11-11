@@ -130,6 +130,68 @@ int Align(
 
         return max_score;
     }
+    else if (type == AlignmentType::SEMIGLOBAL) {
+        const int n = query_len;
+        const int m = target_len;
+        std::vector<std::vector<int>> dp(n + 1, std::vector<int>(m + 1, 0));
+        std::vector<std::vector<char>> trace(n + 1, std::vector<char>(m + 1, 'X'));
+
+        for (int i = 0; i <= n; i++) dp[i][0] = 0;
+        for (int j = 0; j <= m; j++) dp[0][j] = 0;
+
+        for (int i = 1; i <= n; i++) {
+            for (int j = 1; j <= m; j++) {
+                int score_diag = dp[i - 1][j - 1] + 
+                    (query[i - 1] == target[j - 1] ? match : mismatch);
+                int score_up = dp[i - 1][j] + gap;
+                int score_left = dp[i][j - 1] + gap;
+
+                dp[i][j] = std::max({score_diag, score_up, score_left});
+
+                if (dp[i][j] == score_diag) trace[i][j] = 'D';
+                else if (dp[i][j] == score_up) trace[i][j] = 'U';
+                else trace[i][j] = 'L';
+            }
+        }
+
+        //najveci score u zadnjem retku i stupcu
+        int max_score = dp[n][0];
+        int max_i = n, max_j = 0;
+        for (int j = 0; j <= m; j++) {
+            if (dp[n][j] > max_score) {
+                max_score = dp[n][j];
+                max_i = n;
+                max_j = j;
+            }
+        }
+        for (int i = 0; i <= n; i++) {
+            if (dp[i][m] > max_score) {
+                max_score = dp[i][m];
+                max_i = i;
+                max_j = m;
+            }
+        }
+
+        //backtrack
+        if (cigar) {
+            std::string result;
+            int i = max_i, j = max_j;
+
+            // Backtrack dok ne dođeš do rubova ili dp[i][j] == 0
+            while (i > 0 && j > 0) {
+                if (trace[i][j] == 'D') { result.push_back(query[i - 1] == target[j - 1] ? 'M' : 'X'); i--; j--; }
+                else if (trace[i][j] == 'U') { result.push_back('D'); i--; }
+                else if (trace[i][j] == 'L') { result.push_back('I'); j--; }
+                else break;
+            }
+            std::reverse(result.begin(), result.end());
+            *cigar = result;
+
+            // Start = početak segmenta u targetu
+            if (target_begin) *target_begin = j;
+        }
+        return max_score;
+    }
 
     return 0;//privremeno zbog warninga
 }
