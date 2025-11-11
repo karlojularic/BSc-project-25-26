@@ -1,8 +1,8 @@
 #include <iostream>
 #include <getopt.h>
 #include "version.h"
-#include "team_common.hpp"
-#include "team_alignment.hpp"
+#include "blonde_common.hpp"
+#include "blonde_alignment.hpp"
 
 using namespace std;
 

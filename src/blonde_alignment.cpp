@@ -1,4 +1,4 @@
-#include "team_alignment.hpp"
+#include "blonde_alignment.hpp"
 #include <vector>
 #include <algorithm>
 #include <iostream>

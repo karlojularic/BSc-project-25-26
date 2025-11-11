@@ -1,4 +1,4 @@
-#include "team_common.hpp"
+#include "blonde_common.hpp"
 #include "bioparser/fasta_parser.hpp"
 #include "bioparser/fastq_parser.hpp"
 #include <iostream>
