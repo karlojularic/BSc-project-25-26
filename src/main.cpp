@@ -2,6 +2,7 @@
 #include <getopt.h>
 #include "version.h"
 #include "team_common.hpp"
+#include "team_alignment.hpp"
 
 using namespace std;
 

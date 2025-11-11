@@ -11,6 +11,7 @@ add_subdirectory(external/bioparser)
 
 file(GLOB SRC_FILES src/*.cpp)
 add_executable(blonde_mapper ${SRC_FILES})
+target_include_directories(blonde_mapper PRIVATE include)
 
 target_include_directories(blonde_mapper PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}
