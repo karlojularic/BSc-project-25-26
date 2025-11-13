@@ -1,26 +1,56 @@
 #include "blonde_alignment.hpp"
 #include <vector>
+#include <string>
 #include <algorithm>
-#include <iostream>
+#include <cstdint>
+#include <limits>
 
 namespace blonde {
 
-static std::string compress_cigar(const std::string &s) {
-    if (s.empty()) return "";
-    std::string out;
-    char cur = s[0];
-    int cnt = 1;
-    for (size_t i = 1; i < s.size(); i++) {
-        if (s[i] == cur) cnt++;
-        else {
-            out += std::to_string(cnt) + cur;
-            cur = s[i];
-            cnt = 1;
+namespace {
+
+enum class Parent : std::uint8_t {
+    NONE  = 0,
+    DIAG  = 1,  // match/mismatch (M)
+    UP    = 2,  // gap u targetu  -> I 
+    LEFT  = 3   // gap u queryju -> D 
+};
+
+struct Cell {
+    int score;
+    Parent parent;
+};
+
+inline int score_match(char q, char t, int match, int mismatch) {
+    return (q == t) ? match : mismatch;
+}
+
+std::string BuildCigar(const std::string& ops) {
+    if (ops.empty()) {
+        return "*"; // nema poravnanja
+    }
+
+    std::string cigar;
+    char current = ops[0];
+    unsigned int count = 1;
+
+    for (std::size_t i = 1; i < ops.size(); ++i) {
+        if (ops[i] == current) {
+            ++count;
+        } else {
+            cigar += std::to_string(count);
+            cigar += current;
+            current = ops[i];
+            count = 1;
         }
     }
-    out += std::to_string(cnt) + cur;
-    return out;
+    cigar += std::to_string(count);
+    cigar += current;
+
+    return cigar;
 }
+
+} 
 
 int Align(
     const char* query, unsigned int query_len,
@@ -32,101 +62,232 @@ int Align(
     std::string* cigar,
     unsigned int* target_begin)
 {
-    const int n = query_len;
-    const int m = target_len;
+    const unsigned int n = query_len;
+    const unsigned int m = target_len;
 
-    std::vector<std::vector<int>> dp(n + 1, std::vector<int>(m + 1, 0));
-    std::vector<std::vector<char>> trace(n + 1, std::vector<char>(m + 1, 'X'));
-
-    int max_i = n, max_j = m;
-    int max_score = 0;
-
-    if (type == AlignmentType::GLOBAL) {
-        for (int i = 0; i <= n; i++) {
-            dp[i][0] = i * gap;
-            trace[i][0] = 'U';
-        }
-        for (int j = 0; j <= m; j++) {
-            dp[0][j] = j * gap;
-            trace[0][j] = 'L';
-        }
-    } else if (type == AlignmentType::SEMIGLOBAL) {
-        //bez penalizacije rubova
-        for (int i = 0; i <= n; i++) dp[i][0] = 0;
-        for (int j = 0; j <= m; j++) dp[0][j] = 0;
+    if (n == 0 || m == 0) {
+        if (cigar) *cigar = "*";
+        if (target_begin) *target_begin = 0;
+        return 0;
     }
 
-    //dinamicko prog
-    for (int i = 1; i <= n; i++) {
-        for (int j = 1; j <= m; j++) {
-            int score_diag = dp[i - 1][j - 1] + (query[i - 1] == target[j - 1] ? match : mismatch);
-            int score_up   = dp[i - 1][j] + gap;
-            int score_left = dp[i][j - 1] + gap;
+    // --------------------- GLOBAL ALIGNMENT ---------------------------
+    if (type == AlignmentType::GLOBAL) {
 
-            int best;
-            if (type == AlignmentType::LOCAL)
-                best = std::max({0, score_diag, score_up, score_left});
-            else
-                best = std::max({score_diag, score_up, score_left});
+        std::vector<std::vector<Cell>> dp(n+1, std::vector<Cell>(m+1));
 
-            dp[i][j] = best;
+        dp[0][0] = {0, Parent::NONE};
 
-            if (best == score_diag) trace[i][j] = 'D';
-            else if (best == score_up) trace[i][j] = 'U';
-            else if (best == score_left) trace[i][j] = 'L';
-            else trace[i][j] = 'X';
+        for (unsigned int i=1;i<=n;i++) {
+            dp[i][0].score  = dp[i-1][0].score + gap;
+            dp[i][0].parent = Parent::UP;
+        }
+        for (unsigned int j=1;j<=m;j++) {
+            dp[0][j].score  = dp[0][j-1].score + gap;
+            dp[0][j].parent = Parent::LEFT;
+        }
 
-            if (type == AlignmentType::LOCAL && best > max_score) {
-                max_score = best;
-                max_i = i;
-                max_j = j;
+        // Fill
+        for (unsigned int i=1;i<=n;i++) {
+            for (unsigned int j=1;j<=m;j++) {
+
+                int diag = dp[i-1][j-1].score +
+                           score_match(query[i-1],target[j-1],match,mismatch);
+                int up   = dp[i-1][j].score + gap;
+                int left = dp[i][j-1].score + gap;
+
+                int best = diag;
+                Parent p = Parent::DIAG;
+
+                if (up > best) { best = up; p = Parent::UP; }
+                if (left > best) { best = left; p = Parent::LEFT; }
+
+                dp[i][j].score = best;
+                dp[i][j].parent = p;
             }
         }
+
+        // Traceback (0,0) → (n,m)
+        unsigned int i = n, j = m;
+        std::string ops_rev;
+
+        while (i>0 || j>0) {
+            Parent p = dp[i][j].parent;
+            if (p == Parent::DIAG) { ops_rev.push_back('M'); --i; --j; }
+            else if (p == Parent::UP) { ops_rev.push_back('I'); --i; }
+            else if (p == Parent::LEFT) { ops_rev.push_back('D'); --j; }
+            else break;
+        }
+
+        if (target_begin) *target_begin = j;
+
+        if (cigar) {
+            std::string ops(ops_rev.rbegin(), ops_rev.rend());
+            *cigar = BuildCigar(ops);
+        }
+
+        return dp[n][m].score;
     }
 
-    if (type == AlignmentType::GLOBAL) {
-        max_i = n; max_j = m;
-        max_score = dp[n][m];
-    } else if (type == AlignmentType::SEMIGLOBAL) {
-        max_score = dp[n][0];
-        max_i = n; max_j = 0;
-        for (int j = 0; j <= m; j++) {
-            if (dp[n][j] > max_score) { max_score = dp[n][j]; max_i = n; max_j = j; }
-        }
-        for (int i = 0; i <= n; i++) {
-            if (dp[i][m] > max_score) { max_score = dp[i][m]; max_i = i; max_j = m; }
-        }
-    }
+    // -------------------- SEMI-GLOBAL ALIGNMENT -----------------------
+    if (type == AlignmentType::SEMIGLOBAL) {
 
-    //rekonstrukcija
-    if (cigar) {
-        std::string raw;
-        int i = max_i, j = max_j;
+        std::vector<std::vector<Cell>> dp(n+1, std::vector<Cell>(m+1));
 
-        while (i > 0 && j > 0) {
-            char move = trace[i][j];
-            if (type == AlignmentType::LOCAL && dp[i][j] == 0)
+        for (unsigned int i=0;i<=n;i++) {
+            dp[i][0] = {0, Parent::NONE};
+        }
+        for (unsigned int j=0;j<=m;j++) {
+            dp[0][j] = {0, Parent::NONE};
+        }
+
+        // Fill
+        for (unsigned int i=1;i<=n;i++) {
+            for (unsigned int j=1;j<=m;j++) {
+                int diag = dp[i-1][j-1].score +
+                           score_match(query[i-1],target[j-1],match,mismatch);
+                int up   = dp[i-1][j].score + gap;
+                int left = dp[i][j-1].score + gap;
+
+                int best = diag;
+                Parent p = Parent::DIAG;
+
+                if (up > best)  { best = up;  p = Parent::UP; }
+                if (left > best){ best = left; p = Parent::LEFT; }
+
+                dp[i][j].score = best;
+                dp[i][j].parent = p;
+            }
+        }
+
+        //  goal cell: max last row iili last column
+        int best = std::numeric_limits<int>::min();
+        unsigned int gi = n, gj = m;
+
+        for (unsigned int j=0;j<=m;j++) {
+            if (dp[n][j].score > best) {
+                best = dp[n][j].score;
+                gi = n;
+                gj = j;
+            }
+        }
+        for (unsigned int i=0;i<=n;i++) {
+            if (dp[i][m].score > best) {
+                best = dp[i][m].score;
+                gi = i;
+                gj = m;
+            }
+        }
+
+        // Traceback until parent==NONE
+        unsigned int i = gi, j = gj;
+        std::string ops_rev;
+
+        while ((i>0 || j>0) && dp[i][j].parent != Parent::NONE) {
+            if (i == 0 || j == 0)
                 break;
 
-            if (move == 'D') { 
-                raw.push_back(query[i - 1] == target[j - 1] ? 'M' : 'X');
-                i--; j--;
-            } else if (move == 'U') { 
-                raw.push_back('I'); //insertion u TARGETU (deletion u queryu)
-                i--;
-            } else if (move == 'L') { 
-                raw.push_back('D'); //deletion u TARGETU (insertion u queryu)
-                j--;
-            } else break;
+            Parent p = dp[i][j].parent;
+            if (p == Parent::DIAG) { ops_rev.push_back('M'); --i; --j; }
+            else if (p == Parent::UP) { ops_rev.push_back('I'); --i; }
+            else if (p == Parent::LEFT) { ops_rev.push_back('D'); --j; }
         }
 
-        std::reverse(raw.begin(), raw.end());
-        *cigar = compress_cigar(raw);
+        if (target_begin) *target_begin = j;
 
-        if (target_begin) *target_begin = j;  //j pokazuje na početak segmenta u targetu !
+        if (cigar) {
+            std::string ops(ops_rev.rbegin(), ops_rev.rend());
+            *cigar = BuildCigar(ops);
+        }
+
+        return best;
     }
 
-    return max_score;
+    // ----------------------- LOCAL ALIGNMENT --------------------------
+    if (type == AlignmentType::LOCAL) {
+
+        std::vector<std::vector<Cell>> dp(n+1, std::vector<Cell>(m+1));
+
+        for (unsigned int i=0;i<=n;i++) {
+            dp[i][0] = {0, Parent::NONE};
+        }
+        for (unsigned int j=0;j<=m;j++) {
+            dp[0][j] = {0, Parent::NONE};
+        }
+
+        int best_score = 0;
+        unsigned int bi = 0, bj = 0;
+
+        // Fill
+        for (unsigned int i=1;i<=n;i++) {
+            for (unsigned int j=1;j<=m;j++) {
+                int diag = dp[i-1][j-1].score +
+                           score_match(query[i-1],target[j-1],match,mismatch);
+                int up   = dp[i-1][j].score + gap;
+                int left = dp[i][j-1].score + gap;
+
+                int cell = std::max({0, diag, up, left});
+                Parent p = Parent::NONE;
+
+                if (cell == diag) p = Parent::DIAG;
+                else if (cell == up) p = Parent::UP;
+                else if (cell == left) p = Parent::LEFT;
+
+                dp[i][j].score = cell;
+                dp[i][j].parent = p;
+
+                if (cell > best_score) {
+                    best_score = cell;
+                    bi = i;
+                    bj = j;
+                }
+            }
+        }
+
+        // v1 traceback
+        if (cigar) {
+            std::string raw;
+            unsigned int i = bi, j = bj;
+            unsigned int j_start = j;
+
+            while (i > 0 && j > 0) {
+                Parent p = dp[i][j].parent;
+
+                if (dp[i][j].score == 0) {
+                    j_start = j;
+                    break;
+                }
+
+                if (p == Parent::DIAG) {
+                    raw.push_back(query[i - 1] == target[j - 1] ? 'M' : 'X');
+                    --i; 
+                    --j;
+                } 
+                else if (p == Parent::UP) {
+                    raw.push_back('I');
+                    --i;
+                } 
+                else if (p == Parent::LEFT) {
+                    raw.push_back('D');
+                    --j;
+                } 
+                else {
+                    break;
+                }
+            }
+
+            std::reverse(raw.begin(), raw.end());
+            *cigar = BuildCigar(raw);
+
+            if (target_begin)
+                *target_begin = j_start;
+        }
+
+        return best_score;
+
+    }
+
+    return 0;
 }
 
-} 
+} // namespace blonde
