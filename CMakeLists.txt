@@ -13,6 +13,7 @@ set(SRC_FILES
     src/main.cpp
     src/team_alignment.cpp
     src/team_common.cpp
+    src/team_minimizers.cpp # DODANO: izvorna datoteka za minimizere
 )
 
 add_executable(blonde_mapper ${SRC_FILES})
@@ -28,7 +29,12 @@ enable_testing()
 
 find_package(GTest REQUIRED)
 
-add_executable(blonde_mapper_tests test/alignment_tests.cpp)
+# DODANO: test/minimizer_tests.cpp u popis izvornih datoteka za testove
+add_executable(blonde_mapper_tests 
+    test/alignment_tests.cpp 
+    test/minimizer_tests.cpp
+)
+
 target_include_directories(blonde_mapper_tests PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}
     include
@@ -38,6 +44,7 @@ target_include_directories(blonde_mapper_tests PRIVATE
 target_sources(blonde_mapper_tests PRIVATE
     src/team_alignment.cpp
     src/team_common.cpp
+    src/team_minimizers.cpp # DODANO: izvorna datoteka za minimizere u testovima
 )
 
 target_link_libraries(blonde_mapper_tests PRIVATE
