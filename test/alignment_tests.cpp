@@ -1,5 +1,5 @@
 #include "gtest/gtest.h"
-#include "team_alignment.hpp" 
+#include "blonde_alignment.hpp" 
 #include <string>
 
 using namespace blonde; 

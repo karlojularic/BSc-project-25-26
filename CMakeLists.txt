@@ -11,9 +11,10 @@ add_subdirectory(external/bioparser)
 
 set(SRC_FILES
     src/main.cpp
-    src/team_alignment.cpp
-    src/team_common.cpp
-    src/team_minimizers.cpp # DODANO: izvorna datoteka za minimizere
+    src/blonde_alignment.cpp
+    src/blonde_common.cpp
+    src/blonde_minimizers.cpp # DODANO: izvorna datoteka za minimizere
+    src/blonde_mapper.cpp # dodano -katarina
 )
 
 add_executable(blonde_mapper ${SRC_FILES})
@@ -42,9 +43,9 @@ target_include_directories(blonde_mapper_tests PRIVATE
 )
 
 target_sources(blonde_mapper_tests PRIVATE
-    src/team_alignment.cpp
-    src/team_common.cpp
-    src/team_minimizers.cpp # DODANO: izvorna datoteka za minimizere u testovima
+    src/blonde_alignment.cpp
+    src/blonde_common.cpp
+    src/blonde_minimizers.cpp # DODANO: izvorna datoteka za minimizere u testovima
 )
 
 target_link_libraries(blonde_mapper_tests PRIVATE

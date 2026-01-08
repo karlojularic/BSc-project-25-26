@@ -1,4 +1,4 @@
-#include "team_minimizers.hpp"
+#include "blonde_minimizers.hpp"
 #include <limits> // Za std::numeric_limits
 
 namespace blonde {

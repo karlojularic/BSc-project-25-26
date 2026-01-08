@@ -1,5 +1,5 @@
 #include "gtest/gtest.h"
-#include "team_minimizers.hpp"
+#include "blonde_minimizers.hpp"
 #include <tuple>
 #include <vector>
 
