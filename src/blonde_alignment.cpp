@@ -11,7 +11,7 @@ namespace {
 
 enum class Parent : std::uint8_t {
     NONE  = 0,
-    DIAG  = 1,  // match/mismatch (M)
+    DIAG  = 1,  // match/mismatch (=/X)
     UP    = 2,  // gap u targetu  -> I 
     LEFT  = 3   // gap u queryju -> D 
 };
@@ -109,20 +109,32 @@ int Align(
 
         // Traceback (0,0) → (n,m)
         unsigned int i = n, j = m;
-        std::string ops_rev;
+        std::string raw;
 
         while (i>0 || j>0) {
             Parent p = dp[i][j].parent;
-            if (p == Parent::DIAG) { ops_rev.push_back('M'); --i; --j; }
-            else if (p == Parent::UP) { ops_rev.push_back('I'); --i; }
-            else if (p == Parent::LEFT) { ops_rev.push_back('D'); --j; }
-            else break;
+            if (p == Parent::DIAG) {
+                    raw.push_back(query[i - 1] == target[j - 1] ? '=' : 'X');
+                    --i; 
+                    --j;
+                } 
+                else if (p == Parent::UP) {
+                    raw.push_back('I');
+                    --i;
+                } 
+                else if (p == Parent::LEFT) {
+                    raw.push_back('D');
+                    --j;
+                } 
+                else {
+                    break;
+                }
         }
 
         if (target_begin) *target_begin = j;
 
         if (cigar) {
-            std::string ops(ops_rev.rbegin(), ops_rev.rend());
+            std::string ops(raw.rbegin(), raw.rend());
             *cigar = BuildCigar(ops);
         }
 
@@ -181,22 +193,35 @@ int Align(
 
         // Traceback until parent==NONE
         unsigned int i = gi, j = gj;
-        std::string ops_rev;
+        std::string raw;
 
         while ((i>0 || j>0) && dp[i][j].parent != Parent::NONE) {
             if (i == 0 || j == 0)
                 break;
 
             Parent p = dp[i][j].parent;
-            if (p == Parent::DIAG) { ops_rev.push_back('M'); --i; --j; }
-            else if (p == Parent::UP) { ops_rev.push_back('I'); --i; }
-            else if (p == Parent::LEFT) { ops_rev.push_back('D'); --j; }
+            if (p == Parent::DIAG) {
+                raw.push_back(query[i - 1] == target[j - 1] ? '=' : 'X');
+                --i; 
+                --j;
+            } 
+            else if (p == Parent::UP) {
+                raw.push_back('I');
+                --i;
+            } 
+            else if (p == Parent::LEFT) {
+                raw.push_back('D');
+                --j;
+            } 
+            else {
+                break;
+            }
         }
 
         if (target_begin) *target_begin = j;
 
         if (cigar) {
-            std::string ops(ops_rev.rbegin(), ops_rev.rend());
+            std::string ops(raw.rbegin(), raw.rend());
             *cigar = BuildCigar(ops);
         }
 
@@ -259,7 +284,7 @@ int Align(
                 }
 
                 if (p == Parent::DIAG) {
-                    raw.push_back(query[i - 1] == target[j - 1] ? 'M' : 'X');
+                    raw.push_back(query[i - 1] == target[j - 1] ? '=' : 'X');
                     --i; 
                     --j;
                 } 
