@@ -343,6 +343,19 @@ void MapFragment(
     uint32_t aln_len = 0;
     uint32_t nmatch = 0;
 
+    
+    uint32_t left_clip  = fs;
+    uint32_t right_clip = fragment.seq.size() - (fs + query_aligned);
+
+    std::string final_cigar = cigar;
+
+    if (left_clip > 0)
+        final_cigar = std::to_string(left_clip) + "S" + final_cigar;
+
+    if (right_clip > 0)
+        final_cigar += std::to_string(right_clip) + "S";
+
+
     uint32_t num = 0;
     for (char c : cigar) {
         if (std::isdigit(c)) {
@@ -381,7 +394,7 @@ void MapFragment(
 
     uint32_t t_start_chain = ref_min;
     uint32_t t_start_aln = rs + target_begin;
-    uint32_t t_start = std::min(t_start_chain, t_start_aln);
+    uint32_t t_start = std::min(t_start_chain, t_start_aln); //t_start = rs + target_begin - zeleno je pravilnije, dok sredim alignment prvo samo
     uint32_t t_end = t_start + target_aligned;
 
     if (is_reverse) {
@@ -407,7 +420,7 @@ void MapFragment(
         << aln_len << "\t"
         << mapq; //moze mozda jednostavnije 
         if (print_cigar) {
-            std::cout << "\tcg:Z:" << cigar;
+            std::cout << "\tcg:Z:" << final_cigar;
         }
         std::cout << "\n";
 }

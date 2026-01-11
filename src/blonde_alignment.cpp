@@ -27,7 +27,7 @@ inline int score_match(char q, char t, int match, int mismatch) {
 
 std::string BuildCigar(const std::string& ops) {
     if (ops.empty()) {
-        return "*"; // nema poravnanja
+        return ""; // nema poravnanja
     }
 
     std::string cigar;
