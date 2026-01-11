@@ -8,7 +8,10 @@
 #include <iostream>
 #include <algorithm>
 #include <cstdlib>
+#ifdef _OPENMP
 #include <omp.h>
+#endif
+
 
 namespace blonde {
 
@@ -111,9 +114,7 @@ std::vector<Seed> ComputeLIS(const std::vector<Seed>& hits, unsigned int k) {
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < i; ++j) {
             if (hits[j].frag_pos < hits[i].frag_pos &&
-                hits[j].ref_pos < hits[i].ref_pos &&
-                (hits[i].frag_pos - hits[j].frag_pos) >= 1 && // minimalni pomak
-                (hits[i].ref_pos - hits[j].ref_pos) >= 1) {
+                hits[j].ref_pos < hits[i].ref_pos) {
 
                 int d1 = (int)hits[j].ref_pos - (int)hits[j].frag_pos;
                 int d2 = (int)hits[i].ref_pos - (int)hits[i].frag_pos;
@@ -153,7 +154,7 @@ void MapFragment(
     int match,
     int mismatch,
     int gap,
-    bool print_cigar,
+    bool print_cigar
 ) {
     // ---------- 2.1. minimizeri fragmenta ----------
 
@@ -180,11 +181,9 @@ void MapFragment(
         uint32_t frag_pos = std::get<1>(m);
 
         auto it = index.find(hash);
-        if (it == index.end()) continue;
-
-        for (auto& hit : it->second) {
-            uint32_t ref_id = hit.first;
-            seeds.push_back({frag_pos, ref_id, hit.second, false});
+        if (it != index.end()) {
+            for (auto& hit : it->second) 
+                seeds.push_back({frag_pos, hit.first, hit.second, false});
         }
     }
 
@@ -193,13 +192,10 @@ void MapFragment(
         uint32_t frag_pos_rc = std::get<1>(m);
         uint32_t frag_pos = fragment.seq.size() - frag_pos_rc - k;
 
-
         auto it = index.find(hash);
-        if (it == index.end()) continue;
-
-        for (auto& hit : it->second) {
-            uint32_t ref_id = hit.first;
-            seeds.push_back({frag_pos, ref_id, hit.second, true});
+        if (it != index.end()) {
+            for (auto& hit : it->second) 
+                seeds.push_back({frag_pos, hit.first, hit.second, true});
         }
     }
 
@@ -210,6 +206,8 @@ void MapFragment(
 
     std::sort(seeds.begin(), seeds.end(),
     [](const Seed& a, const Seed& b) {
+        if (a.is_reverse != b.is_reverse) return a.is_reverse < b.is_reverse;
+        if (a.ref_id != b.ref_id) return a.ref_id < b.ref_id;
         int da = (int)a.ref_pos - (int)a.frag_pos;
         int db = (int)b.ref_pos - (int)b.frag_pos;
         if (da != db) return da < db;
@@ -246,7 +244,7 @@ void MapFragment(
         if (group.size() < 2) continue;
 
         auto c = ComputeLIS(group, k);
-        if (c.size() >= 3) {
+        if (c.size() >= 3) { //ovo mijenjati po potrebi za kratke primjere
             chains.push_back(c);
         }
     }
@@ -381,7 +379,9 @@ void MapFragment(
     uint32_t q_start = fs;
     uint32_t q_end = fs + query_aligned;
 
-    uint32_t t_start = rs + target_begin;
+    uint32_t t_start_chain = ref_min;
+    uint32_t t_start_aln = rs + target_begin;
+    uint32_t t_start = std::min(t_start_chain, t_start_aln);
     uint32_t t_end = t_start + target_aligned;
 
     if (is_reverse) {
