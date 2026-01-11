@@ -18,7 +18,8 @@ void RunMapper(
     int match,
     int mismatch,
     int gap,
-    bool print_cigar
+    bool print_cigar,
+    int num_threads
 );
 
 }

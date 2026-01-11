@@ -8,6 +8,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cstdlib>
+#include <omp.h>
 
 namespace blonde {
 
@@ -148,12 +149,11 @@ void MapFragment(
     const MinimizerIndex& index,
     unsigned int k,
     unsigned int w,
-    double f,
     AlignmentType aln_type,
     int match,
     int mismatch,
     int gap,
-    bool print_cigar
+    bool print_cigar,
 ) {
     // ---------- 2.1. minimizeri fragmenta ----------
 
@@ -391,6 +391,8 @@ void MapFragment(
         q_end = new_q_end;
     }
 
+    #pragma omp critical
+
     std::cout
         << fragment.name << "\t"
         << fragment.seq.size() << "\t"
@@ -422,17 +424,22 @@ void RunMapper(
     int match,
     int mismatch,
     int gap,
-    bool print_cigar
+    bool print_cigar,
+    int num_threads
 ) {
     auto index = BuildReferenceIndex(references, k, w);
     FilterFrequentMinimizers(index, f);
+
+    omp_set_num_threads(num_threads);
+
+    #pragma omp parallel for schedule(dynamic)
 
     for (const auto& frag : fragments) {
         MapFragment(
             frag,
             references,
             index,
-            k, w, f,
+            k, w,
             aln_type,
             match, mismatch, gap,
             print_cigar
