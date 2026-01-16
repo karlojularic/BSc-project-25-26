@@ -63,5 +63,25 @@ int main(int argc, char *argv[]) {
 
     blonde::PrintStats(file1, file2);
 
+    //test za mappiraj
+    
+    vector<blonde::Sequence> references = blonde::LoadSequences(file1);
+    vector<blonde::Sequence> fragments = blonde::LoadSequences(file2);
+
+    if (references.empty() || fragments.empty()) {
+        cerr << "Error: Could not load sequences from provided files." << endl;
+        return 1;
+    }
+
+    blonde::RunMapper(
+        references, 
+        fragments, 
+        k, w, f, 
+        blonde::AlignmentType::LOCAL,
+        2, -3, -5,
+        print_cigar,
+        num_threads
+    );
+
     return 0;
 }

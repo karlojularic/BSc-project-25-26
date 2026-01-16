@@ -22,4 +22,6 @@ struct Sequence {
 
 void PrintStats(const std::string& file1, const std::string& file2);
 
+std::vector<Sequence> LoadSequences(const std::string& path);
+
 }

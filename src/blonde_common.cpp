@@ -83,4 +83,24 @@ void PrintStats(const std::string& file1, const std::string& file2) {
     cerr << "N50 length: " << n50 << "\n";
 }
 
+std::vector<Sequence> LoadSequences(const std::string& path) {
+    std::vector<Sequence> sequences;
+    
+    // isto kao u PrintStats
+    bool is_fastq = (path.find(".fastq") != std::string::npos || path.find(".fq") != std::string::npos);
+
+    std::unique_ptr<bioparser::Parser<Sequence>> parser;
+    if (is_fastq) {
+        parser = bioparser::Parser<Sequence>::Create<bioparser::FastqParser>(path);
+    } else {
+        parser = bioparser::Parser<Sequence>::Create<bioparser::FastaParser>(path);
+    }
+
+    auto parsed_seqs = parser->Parse(-1);
+    for (auto& seq_ptr : parsed_seqs) {
+        sequences.push_back(*seq_ptr);
+    }
+    return sequences;
+}
+
 } // namespace blonde
