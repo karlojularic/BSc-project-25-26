@@ -87,7 +87,7 @@ std::vector<Sequence> LoadSequences(const std::string& path) {
     std::vector<Sequence> sequences;
     
     // isto kao u PrintStats
-    bool is_fastq = (path.find(".fastq") != std::string::npos || path.find(".fq") != std::string::npos);
+    bool is_fastq = (path.find(".fastq") != std::string::npos);
 
     std::unique_ptr<bioparser::Parser<Sequence>> parser;
     if (is_fastq) {
