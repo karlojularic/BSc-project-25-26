@@ -273,30 +273,22 @@ int Align(
         if (cigar) {
             std::string raw;
             unsigned int i = bi, j = bj;
-            unsigned int j_start = j;
 
             while (i > 0 && j > 0) {
-                Parent p = dp[i][j].parent;
+                if (dp[i][j].score == 0) break;
 
-                if (dp[i][j].score == 0) {
-                    j_start = j;
-                    break;
-                }
+                Parent p = dp[i][j].parent;
 
                 if (p == Parent::DIAG) {
                     raw.push_back(query[i - 1] == target[j - 1] ? '=' : 'X');
-                    --i; 
-                    --j;
-                } 
-                else if (p == Parent::UP) {
+                    --i; --j;
+                } else if (p == Parent::UP) {
                     raw.push_back('I');
                     --i;
-                } 
-                else if (p == Parent::LEFT) {
+                } else if (p == Parent::LEFT) {
                     raw.push_back('D');
                     --j;
-                } 
-                else {
+                } else {
                     break;
                 }
             }
@@ -305,8 +297,9 @@ int Align(
             *cigar = BuildCigar(raw);
 
             if (target_begin)
-                *target_begin = j_start;
+                *target_begin = j;
         }
+
 
         return best_score;
 
