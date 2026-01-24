@@ -8,6 +8,8 @@
 #include <iostream>
 #include <algorithm>
 #include <cstdlib>
+#include <cctype>
+
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -244,167 +246,169 @@ void MapFragment(
         if (group.size() < 2) continue;
 
         auto c = ComputeLIS(group, k);
-        if (c.size() >= 3) { //ovo mijenjati po potrebi za kratke primjere
+        if (c.size() >= 1) { //ovo mijenjati po potrebi za kratke primjere, orignalno >=3
             chains.push_back(c);
         }
     }
 
-    //if (chains.empty()) return; //prepraviti
-    int mapq = 0;
+    if (chains.empty()) return;
 
-    if (chains.empty()){
-        mapq = 255;
-    } else{
-        std::vector<int> chain_scores;
-        for (const auto& c : chains) {
-            chain_scores.push_back((int)c.size());
-        }
+    //novo
+    const std::vector<Seed>* best_plus = nullptr;
+    const std::vector<Seed>* best_minus = nullptr;
 
-        std::sort(chain_scores.begin(), chain_scores.end(), std::greater<int>());
-
-        int best = chain_scores[0];
-        int second = (chain_scores.size() > 1) ? chain_scores[1] : 0;
-
-    
-
-        if (best > 0) {
-            if (second == 0) {
-                mapq = 254;
-            } else {
-                double ratio = (double)second / (double)best;
-                mapq = (int)(254.0 * (1.0 - ratio));
-            }
-        }
-
-        if (mapq < 0) mapq = 0;
-        if (mapq > 254) mapq = 254;
-    }
-
-    // uzimam najduži chain
-    auto& chain = *std::max_element(
-        chains.begin(), chains.end(),
-        [](const auto& a, const auto& b) {
-            return a.size() < b.size();
-        });
-
-
-    bool is_reverse = chain[0].is_reverse;
-    const std::string& frag_seq_used = is_reverse ? frag_rc : fragment.seq;
-
-    // ---------- 2.4. prozor za aligment ----------
-    uint32_t ref_id = chain[0].ref_id;
-
-    uint32_t frag_min = UINT32_MAX;
-    uint32_t frag_max = 0;
-
-    for (const auto& s : chain) {
-        frag_min = std::min(frag_min, s.frag_pos);
-        frag_max = std::max(frag_max, s.frag_pos + k);
-    }
-
-
-    uint32_t ref_min = UINT32_MAX;
-    uint32_t ref_max = 0;
-
-    for (const auto& s : chain) {
-        ref_min = std::min(ref_min, s.ref_pos);
-        ref_max = std::max(ref_max, s.ref_pos + k);
-    }
-
-    // padding
-    const int PAD = 3 * k;
-
-    int fs = std::max<int>(0, frag_min - PAD);
-    int fe = std::min<int>(frag_seq_used.size(), frag_max + PAD);
-
-    int rs = std::max<int>(0, ref_min - PAD);
-    int re = std::min<int>(references[ref_id].seq.size(), ref_max + PAD);
-
-    std::string frag_sub = frag_seq_used.substr(fs, fe - fs);
-    std::string ref_sub = references[ref_id].seq.substr(rs, re - rs);
-
-    // ---------- 2.5. alignment ----------
-    std::string cigar;
-    unsigned int target_begin = 0;
-
-    int score = Align(
-        frag_sub.data(), frag_sub.size(),
-        ref_sub.data(), ref_sub.size(),
-        aln_type,
-        match,
-        mismatch,
-        gap,
-        &cigar,
-        &target_begin
-    );
-
-    if (cigar.empty()) return; //prepraviti
-
-    // ---------- 2.6. PAF ----------  
-
-    uint32_t query_aligned = 0;
-    uint32_t target_aligned = 0;
-    uint32_t aln_len = 0;
-    uint32_t nmatch = 0;
-
-    
-    uint32_t left_clip  = fs;
-    uint32_t right_clip = fragment.seq.size() - (fs + query_aligned);
-
-    std::string final_cigar = cigar;
-
-    if (left_clip > 0)
-        final_cigar = std::to_string(left_clip) + "S" + final_cigar;
-
-    if (right_clip > 0)
-        final_cigar += std::to_string(right_clip) + "S";
-
-
-    uint32_t num = 0;
-    for (char c : cigar) {
-        if (std::isdigit(c)) {
-            num = num * 10 + (c - '0');
+    for (const auto& c : chains) {
+        if (c.empty()) continue;
+        if (!c[0].is_reverse) {
+            if (!best_plus || c.size() > best_plus->size()) best_plus = &c;
         } else {
-            switch (c) {
-                case '=':
-                    query_aligned += num;
-                    target_aligned += num;
-                    aln_len += num;
-                    nmatch += num;
-                    break;
-                case 'X':
-                case 'M': //M zapravo nema, sve je trenutno =/X
-                    query_aligned += num;
-                    target_aligned += num;
-                    aln_len += num;
-                    break;
-                case 'I':
-                    query_aligned += num;
-                    aln_len += num;
-                    break;
-                case 'D':
-                    target_aligned += num;
-                    aln_len += num;
-                    break;
-            }
-            num = 0;
+            if (!best_minus || c.size() > best_minus->size()) best_minus = &c;
         }
     }
 
-    uint32_t q_start = fs;
-    uint32_t q_end = fs + query_aligned;
+    if (!best_plus && !best_minus) return;
+    //novo kraj
 
-    uint32_t t_start_chain = ref_min;
-    uint32_t t_start_aln = rs + target_begin;
-    uint32_t t_start = std::min(t_start_chain, t_start_aln); //t_start = rs + target_begin - zeleno je pravilnije, dok sredim alignment prvo samo
-    uint32_t t_end = t_start + target_aligned;
+    //na stari nacin se pregledavaju chainovi, ali ih je vise
+    //na novi nacin se bira najbolji
+    auto run_extend = [&](const std::vector<Seed>* chain_ptr, bool want_reverse,
+                        // output
+                        int& out_score,
+                        uint32_t& out_ref_id,
+                        uint32_t& out_q_start, uint32_t& out_q_end,
+                        uint32_t& out_t_start, uint32_t& out_t_end,
+                        uint32_t& out_nmatch, uint32_t& out_aln_len,
+                        std::string& out_cigar) -> bool
+    {
+        if (!chain_ptr || chain_ptr->empty()) return false;
 
-    if (is_reverse) {
-        uint32_t new_q_start = fragment.seq.size() - q_end;
-        uint32_t new_q_end = fragment.seq.size() - q_start;
-        q_start = new_q_start;
-        q_end = new_q_end;
+        const auto& chain = *chain_ptr;
+        out_ref_id = chain[0].ref_id;
+
+        const std::string& frag_seq_used = want_reverse ? frag_rc : fragment.seq;
+
+        //dosl sve staro
+        uint32_t frag_min = UINT32_MAX, frag_max = 0;
+        uint32_t ref_min = UINT32_MAX, ref_max = 0;
+
+        for (const auto& s : chain) {
+            frag_min = std::min(frag_min, s.frag_pos);
+            frag_max = std::max(frag_max, s.frag_pos + k);
+            ref_min = std::min(ref_min, s.ref_pos);
+            ref_max = std::max(ref_max, s.ref_pos + k);
+        }
+
+        const int PAD = 3 * (int)k;
+
+        int fs = std::max<int>(0, (int)frag_min - PAD);
+        int fe = std::min<int>((int)frag_seq_used.size(), (int)frag_max + PAD);
+
+        int rs = std::max<int>(0, (int)ref_min - PAD);
+        int re = std::min<int>((int)references[out_ref_id].seq.size(), (int)ref_max + PAD);
+
+        std::string frag_sub = frag_seq_used.substr(fs, fe - fs);
+        std::string ref_sub = references[out_ref_id].seq.substr(rs, re - rs);
+
+        unsigned int target_begin = 0;
+        std::string cigar;
+
+        int score = Align(
+            frag_sub.data(), frag_sub.size(),
+            ref_sub.data(), ref_sub.size(),
+            aln_type, match, mismatch, gap,
+            &cigar, &target_begin
+        );
+
+        if (cigar.empty()) return false;
+
+        uint32_t query_aligned = 0, target_aligned = 0, aln_len = 0, nmatch = 0;
+        uint32_t num = 0;
+
+        for (char c : cigar) {
+            if (std::isdigit((unsigned char)c)) {
+                num = num * 10 + (c - '0');
+            } else {
+                switch (c) {
+                    case '=': query_aligned += num; target_aligned += num; aln_len += num; nmatch += num; break;
+                    case 'X':
+                    case 'M': query_aligned += num; target_aligned += num; aln_len += num; break;
+                    case 'I': query_aligned += num; aln_len += num; break;
+                    case 'D': target_aligned += num; aln_len += num; break;
+                }
+                num = 0;
+            }
+        }
+
+        uint32_t q_start = fs;
+        uint32_t q_end = fs + query_aligned;
+
+        uint32_t t_start = rs + target_begin;
+        uint32_t t_end = t_start + target_aligned;
+
+        if (want_reverse) {
+            uint32_t new_q_start = (uint32_t)fragment.seq.size() - q_end;
+            uint32_t new_q_end = (uint32_t)fragment.seq.size() - q_start;
+            q_start = new_q_start;
+            q_end = new_q_end;
+        }
+        //dosl sve staro kraj
+
+        out_score = score;
+        out_q_start = q_start; out_q_end = q_end;
+        out_t_start = t_start; out_t_end = t_end;
+        out_nmatch = nmatch; out_aln_len = aln_len;
+        out_cigar = cigar;
+
+        return true;
+    };
+
+    // rezultati za plus i minus //novo
+    bool ok_p=false, ok_m=false;
+
+    int score_p=0, score_m=0;
+    uint32_t ref_p=0, ref_m=0;
+    uint32_t qs_p=0, qe_p=0, ts_p=0, te_p=0, nm_p=0, al_p=0;
+    uint32_t qs_m=0, qe_m=0, ts_m=0, te_m=0, nm_m=0, al_m=0;
+    std::string cigar_p, cigar_m;
+
+    if (best_plus) ok_p = run_extend(best_plus, false, score_p, ref_p, qs_p, qe_p, ts_p, te_p, nm_p, al_p, cigar_p);
+    if (best_minus) ok_m = run_extend(best_minus, true, score_m, ref_m, qs_m, qe_m, ts_m, te_m, nm_m, al_m, cigar_m);
+
+    if (!ok_p && !ok_m) return;
+
+    // odabir najboljeg (minimap2, nakon extend-a) //novo
+    bool take_minus = false;
+    if (!ok_p) take_minus = true;
+    else if (!ok_m) take_minus = false;
+    else {
+        if (score_m != score_p) take_minus = (score_m > score_p);
+        else if (nm_m != nm_p) take_minus = (nm_m > nm_p);
+        else if (al_m != al_p) take_minus = (al_m < al_p);
+        else take_minus = false; // total tie
     }
+
+    int mapq = 255;
+    // mapq je stari
+    if (ok_p && ok_m) {
+        int best = take_minus ? score_m : score_p;
+        int second = take_minus ? score_p : score_m;
+        double ratio = (double)second / (double)best;
+        mapq = (int)(254.0 * (1.0 - ratio));
+    } else {
+        mapq = 254;
+    }
+
+    //novo - samo odabir
+    bool is_reverse = take_minus;
+
+    uint32_t ref_id = is_reverse ? ref_m : ref_p;
+    uint32_t q_start = is_reverse ? qs_m : qs_p;
+    uint32_t q_end = is_reverse ? qe_m : qe_p;
+    uint32_t t_start = is_reverse ? ts_m : ts_p;
+    uint32_t t_end = is_reverse ? te_m : te_p;
+    uint32_t nmatch = is_reverse ? nm_m : nm_p;
+    uint32_t aln_len = is_reverse ? al_m : al_p;
+    std::string cigar = is_reverse ? cigar_m : cigar_p;
 
     #pragma omp critical
 
@@ -420,11 +424,10 @@ void MapFragment(
         << t_end << "\t"
         << nmatch << "\t"
         << aln_len << "\t"
-        << mapq; //moze mozda jednostavnije 
-        if (print_cigar) {
-            std::cout << "\tcg:Z:" << final_cigar;
-        }
-        std::cout << "\n";
+        << mapq;
+
+    if (print_cigar) std::cout << "\tcg:Z:" << cigar;
+    std::cout << "\n";
 }
 
 // ---------- 3. glavni ulaz mappera ----------
