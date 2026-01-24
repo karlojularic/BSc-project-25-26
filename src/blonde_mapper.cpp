@@ -199,7 +199,7 @@ void MapFragment(
         }
     }
 
-    if (seeds.empty()) return;
+    if (seeds.empty()) return; //prepraviti
 
     // ---------- 2.3. chaining (LIS) ----------
     const int DIAG_BAND = 2*k;
@@ -249,34 +249,37 @@ void MapFragment(
         }
     }
 
-    if (chains.empty()) return;
+    //if (chains.empty()) return; //prepraviti
 
-    //mapq
-    std::vector<int> chain_scores;
-    for (const auto& c : chains) {
-        chain_scores.push_back((int)c.size());
-    }
-
-    std::sort(chain_scores.begin(), chain_scores.end(), std::greater<int>());
-
-    int best = chain_scores[0];
-    int second = (chain_scores.size() > 1) ? chain_scores[1] : 0;
-
-    int mapq = 0;
-
-    if (best > 0) {
-        if (second == 0) {
-            mapq = 255;
-        } else {
-            double ratio = (double)second / (double)best;
-            mapq = (int)(255.0 * (1.0 - ratio));
+    if (chains.empty()){
+        mapq = 255;
+    } else{
+        std::vector<int> chain_scores;
+        for (const auto& c : chains) {
+            chain_scores.push_back((int)c.size());
         }
+
+        std::sort(chain_scores.begin(), chain_scores.end(), std::greater<int>());
+
+        int best = chain_scores[0];
+        int second = (chain_scores.size() > 1) ? chain_scores[1] : 0;
+
+    
+
+        if (best > 0) {
+            if (second == 0) {
+                mapq = 254;
+            } else {
+                double ratio = (double)second / (double)best;
+                mapq = (int)(254.0 * (1.0 - ratio));
+            }
+        }
+
+        if (mapq < 0) mapq = 0;
+        if (mapq > 254) mapq = 254;
     }
 
-    if (mapq < 0) mapq = 0;
-    if (mapq > 255) mapq = 255;
-
-    // privremeno: uzima najduži chain
+    // uzimam najduži chain
     auto& chain = *std::max_element(
         chains.begin(), chains.end(),
         [](const auto& a, const auto& b) {
@@ -334,7 +337,7 @@ void MapFragment(
         &target_begin
     );
 
-    if (cigar.empty()) return;
+    if (cigar.empty()) return; //prepraviti
 
     // ---------- 2.6. PAF ----------  
 
@@ -375,10 +378,8 @@ void MapFragment(
                     aln_len += num;
                     break;
                 case 'I':
-                    aln_len += num;
-                    break;
-                case 'S':
                     query_aligned += num;
+                    aln_len += num;
                     break;
                 case 'D':
                     target_aligned += num;
