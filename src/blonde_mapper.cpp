@@ -250,6 +250,7 @@ void MapFragment(
     }
 
     //if (chains.empty()) return; //prepraviti
+    int mapq = 0;
 
     if (chains.empty()){
         mapq = 255;
