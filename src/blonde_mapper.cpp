@@ -8,6 +8,8 @@
 #include <iostream>
 #include <algorithm>
 #include <cstdlib>
+#include <limits>
+
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -142,6 +144,36 @@ std::vector<Seed> ComputeLIS(const std::vector<Seed>& hits, unsigned int k) {
     return chain;
 }
 
+//pomocna fija4 Chain Score
+static long long ChainScore(const std::vector<Seed>& chain, unsigned int k) {
+    if (chain.empty()) return std::numeric_limits<long long>::min();
+
+    // Tunables
+    const long long SEED_BONUS  = 100; // bodovi
+    const long long GAP_PENALTY = 1;   // kazna
+    const long long DIAG_PENALTY= 2;   // kazna
+dr-dq
+    long long score = 0;
+    score += SEED_BONUS * (long long)chain.size();
+
+    for (size_t i = 1; i < chain.size(); ++i) {
+        int dq = (int)chain[i].frag_pos - (int)chain[i-1].frag_pos;
+        int dr = (int)chain[i].ref_pos  - (int)chain[i-1].ref_pos;
+
+        // (mali skokovi)
+        int step = std::max(dq, dr);
+        int step_bins = (k ? (step + (int)k - 1) / (int)k : step);
+        score -= GAP_PENALTY * (long long)step_bins;
+
+        // konzistentna dijagonala (dr ~ dq)
+        int diag = std::abs(dr - dq);
+        int diag_bins = (k ? (diag + (int)k - 1) / (int)k : diag);
+        score -= DIAG_PENALTY * (long long)diag_bins;
+    }
+
+    return score;
+}
+
 // ---------- 2. mapiranje jednog fragmenta ---------- 
 
 void MapFragment(
@@ -190,16 +222,18 @@ void MapFragment(
     for (auto& m : frag_mins_rev) {
         uint32_t hash = std::get<0>(m);
         uint32_t frag_pos_rc = std::get<1>(m);
-        uint32_t frag_pos = fragment.seq.size() - frag_pos_rc - k;
+
+        // frag_pos ostaje u RC koordinatama (indeks u frag_rc)
+        uint32_t frag_pos = frag_pos_rc;
 
         auto it = index.find(hash);
         if (it != index.end()) {
-            for (auto& hit : it->second) 
+            for (auto& hit : it->second)
                 seeds.push_back({frag_pos, hit.first, hit.second, true});
         }
     }
 
-    if (seeds.empty()) return; //prepraviti
+    if (seeds.empty()) return;
 
     // ---------- 2.3. chaining (LIS) ----------
     const int DIAG_BAND = 2*k;
@@ -244,49 +278,56 @@ void MapFragment(
         if (group.size() < 2) continue;
 
         auto c = ComputeLIS(group, k);
-        if (c.size() >= 3) { //ovo mijenjati po potrebi za kratke primjere
+        if (c.size() >= 1) { //ovo mijenjati po potrebi za kratke primjere, originalno >=3
             chains.push_back(c);
         }
     }
 
-    //if (chains.empty()) return; //prepraviti
-    int mapq = 0;
+    if (chains.empty()) return;
 
-    if (chains.empty()){
-        mapq = 255;
-    } else{
-        std::vector<int> chain_scores;
-        for (const auto& c : chains) {
-            chain_scores.push_back((int)c.size());
-        }
+    // uzimam najbolji chain po chaining score
+    const std::vector<Seed>* best_plus = nullptr;
+    const std::vector<Seed>* best_minus = nullptr;
+    long long best_plus_score = std::numeric_limits<long long>::min();
+    long long best_minus_score = std::numeric_limits<long long>::min();
 
-        std::sort(chain_scores.begin(), chain_scores.end(), std::greater<int>());
+    for (const auto& c : chains) {
+        if (c.empty()) continue;
+        long long sc = ChainScore(c, k);
 
-        int best = chain_scores[0];
-        int second = (chain_scores.size() > 1) ? chain_scores[1] : 0;
-
-    
-
-        if (best > 0) {
-            if (second == 0) {
-                mapq = 254;
-            } else {
-                double ratio = (double)second / (double)best;
-                mapq = (int)(254.0 * (1.0 - ratio));
+        if (!c[0].is_reverse) {
+            if (!best_plus || sc > best_plus_score || (sc == best_plus_score && c.size() > best_plus->size())) {
+                best_plus = &c;
+                best_plus_score = sc;
+            }
+        } else {
+            if (!best_minus || sc > best_minus_score || (sc == best_minus_score && c.size() > best_minus->size())) {
+                best_minus = &c;
+                best_minus_score = sc;
             }
         }
-
-        if (mapq < 0) mapq = 0;
-        if (mapq > 254) mapq = 254;
     }
 
-    // uzimam najduži chain
-    auto& chain = *std::max_element(
-        chains.begin(), chains.end(),
-        [](const auto& a, const auto& b) {
-            return a.size() < b.size();
-        });
+    if (!best_plus && !best_minus) return;
+    // std::cerr << fragment.name
+    //       << " best_plus_score=" << best_plus_score
+    //       << " best_minus_score=" << best_minus_score << "\n";
 
+    // odabir strand-a po chain-scoreu
+    const std::vector<Seed>* best_chain = nullptr;
+
+    if (!best_plus) best_chain = best_minus;
+    else if (!best_minus) best_chain = best_plus;
+    else {
+        // ako su scoreovi gotovo jednaki, uzmi onaj s vise seedova (stabilnije)
+        if (best_plus_score != best_minus_score) {
+            best_chain = (best_plus_score > best_minus_score) ? best_plus : best_minus;
+        } else {
+            best_chain = (best_plus->size() >= best_minus->size()) ? best_plus : best_minus;
+        }
+    }
+
+    auto& chain = *best_chain;
 
     bool is_reverse = chain[0].is_reverse;
     const std::string& frag_seq_used = is_reverse ? frag_rc : fragment.seq;
@@ -338,7 +379,7 @@ void MapFragment(
         &target_begin
     );
 
-    if (cigar.empty()) return; //prepraviti
+    if (cigar.empty()) return;
 
     // ---------- 2.6. PAF ----------  
 
@@ -346,19 +387,6 @@ void MapFragment(
     uint32_t target_aligned = 0;
     uint32_t aln_len = 0;
     uint32_t nmatch = 0;
-
-    
-    uint32_t left_clip  = fs;
-    uint32_t right_clip = fragment.seq.size() - (fs + query_aligned);
-
-    std::string final_cigar = cigar;
-
-    if (left_clip > 0)
-        final_cigar = std::to_string(left_clip) + "S" + final_cigar;
-
-    if (right_clip > 0)
-        final_cigar += std::to_string(right_clip) + "S";
-
 
     uint32_t num = 0;
     for (char c : cigar) {
@@ -373,7 +401,7 @@ void MapFragment(
                     nmatch += num;
                     break;
                 case 'X':
-                case 'M': //M zapravo nema, sve je trenutno =/X
+                case 'M': //M zapravo nema, sve je =/X
                     query_aligned += num;
                     target_aligned += num;
                     aln_len += num;
@@ -394,9 +422,7 @@ void MapFragment(
     uint32_t q_start = fs;
     uint32_t q_end = fs + query_aligned;
 
-    uint32_t t_start_chain = ref_min;
-    uint32_t t_start_aln = rs + target_begin;
-    uint32_t t_start = std::min(t_start_chain, t_start_aln); //t_start = rs + target_begin - zeleno je pravilnije, dok sredim alignment prvo samo
+    uint32_t t_start = rs + target_begin;
     uint32_t t_end = t_start + target_aligned;
 
     if (is_reverse) {
@@ -405,6 +431,15 @@ void MapFragment(
         q_start = new_q_start;
         q_end = new_q_end;
     }
+
+    uint32_t left_clip  = q_start;
+    uint32_t right_clip = fragment.seq.size() - q_end;
+
+    std::string final_cigar = cigar;
+    // if (left_clip > 0)  final_cigar = std::to_string(left_clip) + "S" + final_cigar;
+    // if (right_clip > 0) final_cigar += std::to_string(right_clip) + "S";
+
+    int mapq = 255;
 
     #pragma omp critical
 
@@ -420,7 +455,7 @@ void MapFragment(
         << t_end << "\t"
         << nmatch << "\t"
         << aln_len << "\t"
-        << mapq; //moze mozda jednostavnije 
+        << mapq;
         if (print_cigar) {
             std::cout << "\tcg:Z:" << final_cigar;
         }

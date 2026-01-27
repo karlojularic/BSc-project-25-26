@@ -24,7 +24,7 @@ int main(int argc, char *argv[]) {
     unsigned int k = 15;
     unsigned int w = 5;
     double f = 0.001;
-    int num_threads = 1;
+    int num_threads = 3;
     bool print_cigar = false;
 
     const struct option long_options[] = {
@@ -78,7 +78,7 @@ int main(int argc, char *argv[]) {
         fragments, 
         k, w, f, 
         blonde::AlignmentType::LOCAL,
-        2, -3, -5,
+        2, -1, -2,
         print_cigar,
         num_threads
     );
