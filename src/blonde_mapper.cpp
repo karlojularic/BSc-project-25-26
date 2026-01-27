@@ -152,7 +152,7 @@ static long long ChainScore(const std::vector<Seed>& chain, unsigned int k) {
     const long long SEED_BONUS  = 100; // bodovi
     const long long GAP_PENALTY = 1;   // kazna
     const long long DIAG_PENALTY= 2;   // kazna
-dr-dq
+
     long long score = 0;
     score += SEED_BONUS * (long long)chain.size();
 
@@ -223,7 +223,7 @@ void MapFragment(
         uint32_t hash = std::get<0>(m);
         uint32_t frag_pos_rc = std::get<1>(m);
 
-        // frag_pos ostaje u RC koordinatama (indeks u frag_rc)
+        // frag_pos ostaje u rc koordinatama
         uint32_t frag_pos = frag_pos_rc;
 
         auto it = index.find(hash);
@@ -283,8 +283,8 @@ void MapFragment(
         }
     }
 
-    if (chains.empty()) return;
-
+    if (chains.empty()) return; 
+    
     // uzimam najbolji chain po chaining score
     const std::vector<Seed>* best_plus = nullptr;
     const std::vector<Seed>* best_minus = nullptr;
@@ -306,6 +306,7 @@ void MapFragment(
                 best_minus_score = sc;
             }
         }
+
     }
 
     if (!best_plus && !best_minus) return;
