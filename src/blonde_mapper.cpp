@@ -333,61 +333,72 @@ void MapFragment(
     bool is_reverse = chain[0].is_reverse;
     const std::string& frag_seq_used = is_reverse ? frag_rc : fragment.seq;
 
-    // ---------- 2.4. prozor za aligment ----------
-    uint32_t ref_id = chain[0].ref_id;
+        const std::string& frag_seq_used = want_reverse ? frag_rc : fragment.seq;
 
-    uint32_t frag_min = UINT32_MAX;
-    uint32_t frag_max = 0;
+        //dosl sve staro
+        uint32_t frag_min = UINT32_MAX, frag_max = 0;
+        uint32_t ref_min = UINT32_MAX, ref_max = 0;
 
-    for (const auto& s : chain) {
-        frag_min = std::min(frag_min, s.frag_pos);
-        frag_max = std::max(frag_max, s.frag_pos + k);
-    }
+        for (const auto& s : chain) {
+            frag_min = std::min(frag_min, s.frag_pos);
+            frag_max = std::max(frag_max, s.frag_pos + k);
+            ref_min = std::min(ref_min, s.ref_pos);
+            ref_max = std::max(ref_max, s.ref_pos + k);
+        }
 
+        const int PAD = 3 * (int)k;
 
-    uint32_t ref_min = UINT32_MAX;
-    uint32_t ref_max = 0;
+        int fs = std::max<int>(0, (int)frag_min - PAD);
+        int fe = std::min<int>((int)frag_seq_used.size(), (int)frag_max + PAD);
 
-    for (const auto& s : chain) {
-        ref_min = std::min(ref_min, s.ref_pos);
-        ref_max = std::max(ref_max, s.ref_pos + k);
-    }
+        int rs = std::max<int>(0, (int)ref_min - PAD);
+        int re = std::min<int>((int)references[out_ref_id].seq.size(), (int)ref_max + PAD);
 
-    // padding
-    const int PAD = 3 * k;
+        std::string frag_sub = frag_seq_used.substr(fs, fe - fs);
+        std::string ref_sub = references[out_ref_id].seq.substr(rs, re - rs);
 
-    int fs = std::max<int>(0, frag_min - PAD);
-    int fe = std::min<int>(frag_seq_used.size(), frag_max + PAD);
+        unsigned int target_begin = 0;
+        std::string cigar;
 
-    int rs = std::max<int>(0, ref_min - PAD);
-    int re = std::min<int>(references[ref_id].seq.size(), ref_max + PAD);
+        int score = Align(
+            frag_sub.data(), frag_sub.size(),
+            ref_sub.data(), ref_sub.size(),
+            aln_type, match, mismatch, gap,
+            &cigar, &target_begin
+        );
 
-    std::string frag_sub = frag_seq_used.substr(fs, fe - fs);
-    std::string ref_sub = references[ref_id].seq.substr(rs, re - rs);
+        if (cigar.empty()) return false;
 
-    // ---------- 2.5. alignment ----------
-    std::string cigar;
-    unsigned int target_begin = 0;
+        uint32_t query_aligned = 0, target_aligned = 0, aln_len = 0, nmatch = 0;
+        uint32_t num = 0;
 
-    int score = Align(
-        frag_sub.data(), frag_sub.size(),
-        ref_sub.data(), ref_sub.size(),
-        aln_type,
-        match,
-        mismatch,
-        gap,
-        &cigar,
-        &target_begin
-    );
+        for (char c : cigar) {
+            if (std::isdigit((unsigned char)c)) {
+                num = num * 10 + (c - '0');
+            } else {
+                switch (c) {
+                    case '=': query_aligned += num; target_aligned += num; aln_len += num; nmatch += num; break;
+                    case 'X':
+                    case 'M': query_aligned += num; target_aligned += num; aln_len += num; break;
+                    case 'I': query_aligned += num; aln_len += num; break;
+                    case 'D': target_aligned += num; aln_len += num; break;
+                }
+                num = 0;
+            }
+        }
 
     if (cigar.empty()) return;
 
-    // ---------- 2.6. PAF ----------  
+        uint32_t t_start = rs + target_begin;
+        uint32_t t_end = t_start + target_aligned;
 
-    uint32_t query_aligned = 0;
-    uint32_t target_aligned = 0;
-    uint32_t aln_len = 0;
-    uint32_t nmatch = 0;
+        if (want_reverse) {
+            uint32_t new_q_start = (uint32_t)fragment.seq.size() - q_end;
+            uint32_t new_q_end = (uint32_t)fragment.seq.size() - q_start;
+            q_start = new_q_start;
+            q_end = new_q_end;
+        }
+        //dosl sve staro kraj
 
     uint32_t num = 0;
     for (char c : cigar) {
@@ -420,18 +431,28 @@ void MapFragment(
         }
     }
 
-    uint32_t q_start = fs;
-    uint32_t q_end = fs + query_aligned;
+    int mapq = 255;
+    // mapq je stari
+    if (ok_p && ok_m) {
+        int best = take_minus ? score_m : score_p;
+        int second = take_minus ? score_p : score_m;
+        double ratio = (double)second / (double)best;
+        mapq = (int)(254.0 * (1.0 - ratio));
+    } else {
+        mapq = 254;
+    }
 
     uint32_t t_start = rs + target_begin;
     uint32_t t_end = t_start + target_aligned;
 
-    if (is_reverse) {
-        uint32_t new_q_start = fragment.seq.size() - q_end;
-        uint32_t new_q_end = fragment.seq.size() - q_start;
-        q_start = new_q_start;
-        q_end = new_q_end;
-    }
+    uint32_t ref_id = is_reverse ? ref_m : ref_p;
+    uint32_t q_start = is_reverse ? qs_m : qs_p;
+    uint32_t q_end = is_reverse ? qe_m : qe_p;
+    uint32_t t_start = is_reverse ? ts_m : ts_p;
+    uint32_t t_end = is_reverse ? te_m : te_p;
+    uint32_t nmatch = is_reverse ? nm_m : nm_p;
+    uint32_t aln_len = is_reverse ? al_m : al_p;
+    std::string cigar = is_reverse ? cigar_m : cigar_p;
 
     uint32_t left_clip  = q_start;
     uint32_t right_clip = fragment.seq.size() - q_end;
