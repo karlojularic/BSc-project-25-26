@@ -23,7 +23,10 @@ struct Seed {
     uint32_t ref_id;
     uint32_t ref_pos;
     bool is_reverse;
+    uint32_t hash;
+    uint16_t weight;// downweight čestih minimizera
 };
+
 
 using MinimizerIndex =
     std::unordered_map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>>;
@@ -72,6 +75,17 @@ std::string ReverseComplement(const std::string& s) {
         }
     }
     return rc;
+}
+
+//pomocna fija za chainscore
+static inline uint16_t SeedWeightFromFreq(size_t freq) {
+    // freq = koliko puta se taj minimizer pojavljuje u indeksu (hitova)
+    // rijetki minimizeri dobiju veću težinu; česti dobiju 1
+    if (freq == 0) return 1;
+    size_t w = 50 / freq;
+    if (w < 1) w = 1;
+    if (w > 50) w = 50;
+    return (uint16_t)w;
 }
 
 //pomocna fija2
@@ -149,23 +163,34 @@ static long long ChainScore(const std::vector<Seed>& chain, unsigned int k) {
     if (chain.empty()) return std::numeric_limits<long long>::min();
 
     // Tunables
-    const long long SEED_BONUS  = 100; // bodovi
-    const long long GAP_PENALTY = 1;   // kazna
-    const long long DIAG_PENALTY= 2;   // kazna
+    const long long SEED_BONUS    = 60; 
+    const long long GAP_PENALTY   = 2;
+    const long long DIAG_PENALTY  = 6;
+    const long long SPAN_BONUS    = 1;
 
     long long score = 0;
-    score += SEED_BONUS * (long long)chain.size();
 
+    //seed doprinos, koristi weight
+    long long sum_w = 0;
+    for (const auto& s : chain) sum_w += (long long)s.weight;
+    score += SEED_BONUS * sum_w;
+
+    //span bonus - prferira chain koji više pokrije
+    int q_span = (int)chain.back().frag_pos - (int)chain.front().frag_pos;
+    int r_span = (int)chain.back().ref_pos  - (int)chain.front().ref_pos;
+    int span = std::min(q_span, r_span);
+    if (span < 0) span = 0;
+    score += SPAN_BONUS * (long long)span;
+
+    //kazne za gap i diag
     for (size_t i = 1; i < chain.size(); ++i) {
         int dq = (int)chain[i].frag_pos - (int)chain[i-1].frag_pos;
         int dr = (int)chain[i].ref_pos  - (int)chain[i-1].ref_pos;
 
-        // (mali skokovi)
         int step = std::max(dq, dr);
         int step_bins = (k ? (step + (int)k - 1) / (int)k : step);
         score -= GAP_PENALTY * (long long)step_bins;
 
-        // konzistentna dijagonala (dr ~ dq)
         int diag = std::abs(dr - dq);
         int diag_bins = (k ? (diag + (int)k - 1) / (int)k : diag);
         score -= DIAG_PENALTY * (long long)diag_bins;
@@ -214,8 +239,10 @@ void MapFragment(
 
         auto it = index.find(hash);
         if (it != index.end()) {
-            for (auto& hit : it->second) 
-                seeds.push_back({frag_pos, hit.first, hit.second, false});
+            uint16_t wt = SeedWeightFromFreq(it->second.size());
+            for (auto& hit : it->second) {
+                seeds.push_back({frag_pos, hit.first, hit.second, false, hash, wt});
+            }
         }
     }
 
@@ -223,13 +250,14 @@ void MapFragment(
         uint32_t hash = std::get<0>(m);
         uint32_t frag_pos_rc = std::get<1>(m);
 
-        // frag_pos ostaje u rc koordinatama
         uint32_t frag_pos = frag_pos_rc;
 
         auto it = index.find(hash);
         if (it != index.end()) {
-            for (auto& hit : it->second)
-                seeds.push_back({frag_pos, hit.first, hit.second, true});
+            uint16_t wt = SeedWeightFromFreq(it->second.size());
+            for (auto& hit : it->second) {
+                seeds.push_back({frag_pos, hit.first, hit.second, true, hash, wt});
+            }
         }
     }
 
@@ -262,10 +290,11 @@ void MapFragment(
         int last_d = (int)last_group.back().ref_pos
                 - (int)last_group.back().frag_pos;
 
+        int dr_step = std::abs((int)s.ref_pos - (int)last_group.back().ref_pos);
         if (std::abs(d - last_d) <= DIAG_BAND &&
             s.ref_id == last_group.back().ref_id &&
-            s.is_reverse == last_group.back().is_reverse) {
-
+            s.is_reverse == last_group.back().is_reverse &&
+            dr_step <= 10 * (int)k) {
             last_group.push_back(s);
         } else {
             diag_groups.push_back({s});
@@ -278,7 +307,7 @@ void MapFragment(
         if (group.size() < 2) continue;
 
         auto c = ComputeLIS(group, k);
-        if (c.size() >= 1) { //ovo mijenjati po potrebi za kratke primjere, originalno >=3
+        if (c.size() >= 3) { //ovo mijenjati po potrebi za kratke primjere, originalno >=3
             chains.push_back(c);
         }
     }
@@ -310,9 +339,6 @@ void MapFragment(
     }
 
     if (!best_plus && !best_minus) return;
-    // std::cerr << fragment.name
-    //       << " best_plus_score=" << best_plus_score
-    //       << " best_minus_score=" << best_minus_score << "\n";
 
     // odabir strand-a po chain-scoreu
     const std::vector<Seed>* best_chain = nullptr;
@@ -320,7 +346,6 @@ void MapFragment(
     if (!best_plus) best_chain = best_minus;
     else if (!best_minus) best_chain = best_plus;
     else {
-        // ako su scoreovi gotovo jednaki, uzmi onaj s vise seedova (stabilnije)
         if (best_plus_score != best_minus_score) {
             best_chain = (best_plus_score > best_minus_score) ? best_plus : best_minus;
         } else {
@@ -419,6 +444,9 @@ void MapFragment(
             num = 0;
         }
     }
+
+    // if(nmatch < 100) return;
+    // if(aln_len < 120) return;
 
     uint32_t q_start = fs;
     uint32_t q_end = fs + query_aligned;
