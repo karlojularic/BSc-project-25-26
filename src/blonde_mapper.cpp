@@ -124,7 +124,7 @@ std::vector<Seed> ComputeLIS(const std::vector<Seed>& hits, unsigned int k) {
                 int d1 = (int)hits[j].ref_pos - (int)hits[j].frag_pos;
                 int d2 = (int)hits[i].ref_pos - (int)hits[i].frag_pos;
 
-                if (std::abs(d1 - d2) > 15 *k) continue;
+                if (std::abs(d1 - d2) > 15 *k) continue; //heuristika, povećavano po potrebi
 
                 if (dp[j] + 1 > dp[i]) {
                     dp[i] = dp[j] + 1;
@@ -163,10 +163,10 @@ static long long ChainScore(const std::vector<Seed>& chain, unsigned int k) {
     if (chain.empty()) return std::numeric_limits<long long>::min();
 
     // Tunables
-    const long long SEED_BONUS = 60; 
-    const long long GAP_PENALTY = 2;
-    const long long DIAG_PENALTY = 6;
-    const long long SPAN_BONUS = 1;
+    const long long SEED_BONUS = 60; //heuristika, smanjivano po potrebi
+    const long long GAP_PENALTY = 2; //heuristika
+    const long long DIAG_PENALTY = 6; //heuristika, povećavano po potrebi
+    const long long SPAN_BONUS = 1; //heuristika
 
     long long score = 0;
 
@@ -264,7 +264,7 @@ void MapFragment(
     if (seeds.empty()) return;
 
     // ---------- 2.3. chaining (LIS) ----------
-    const int DIAG_BAND = 20 * k;
+    const int DIAG_BAND = 20 * k; //heuristika, povećavano po potrebi
 
     std::sort(seeds.begin(), seeds.end(),
     [](const Seed& a, const Seed& b) {
@@ -294,7 +294,7 @@ void MapFragment(
         if (std::abs(d - last_d) <= DIAG_BAND &&
             s.ref_id == last_group.back().ref_id &&
             s.is_reverse == last_group.back().is_reverse &&
-            dr_step <= 100 * (int)k) {
+            dr_step <= 100 * (int)k) { //heuristika, povećavano po potrebi
             last_group.push_back(s);
         } else {
             diag_groups.push_back({s});
@@ -379,7 +379,11 @@ void MapFragment(
     }
 
     // padding
-    const int PAD = 3000; //stavljeno bilo na 3 * k, ali premal je za e.coli pa su sada heurisike 
+    const int PAD = 8000; 
+    // stavljeno bilo na 3 * k,
+    // ali premalo je bilo za e.coli 
+    // pa su sada heurisike veće
+    // 8000 je ok ali jako sporo
 
     int fs = std::max<int>(0, frag_min - PAD);
     int fe = std::min<int>(frag_seq_used.size(), frag_max + PAD);
@@ -449,7 +453,11 @@ void MapFragment(
     // if(aln_len < 120) return;
 
     uint32_t q_start = fs;
-    uint32_t q_end = fs + query_aligned;
+    //ovo je samo pocetak prozora
+    //mozda bi bolje bilo da se tu doda query_begin
+    //koji bi se izracunao iz Aligna poput target_begina, 
+    //ali imamo zadan Align(...) pa ga nisam mijenjala
+    uint32_t q_end = q_start + query_aligned;
 
     uint32_t t_start = rs + target_begin;
     uint32_t t_end = t_start + target_aligned;
@@ -468,7 +476,7 @@ void MapFragment(
     // if (left_clip > 0) final_cigar = std::to_string(left_clip) + "S" + final_cigar;
     // if (right_clip > 0) final_cigar += std::to_string(right_clip) + "S";
 
-    int mapq = 255;
+    int mapq = 255; //nevazno za projekt R
 
     #pragma omp critical
 
