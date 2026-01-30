@@ -66,7 +66,7 @@ int Align(
     const unsigned int m = target_len;
 
     if (n == 0 || m == 0) {
-        if (cigar) *cigar = "*";
+        if (cigar) *cigar = "";
         if (target_begin) *target_begin = 0;
         return 0;
     }
@@ -107,7 +107,7 @@ int Align(
             }
         }
 
-        // Traceback (0,0) → (n,m)
+        // Traceback
         unsigned int i = n, j = m;
         std::string raw;
 
@@ -191,13 +191,11 @@ int Align(
             }
         }
 
-        // Traceback until parent==NONE
+        // Traceback
         unsigned int i = gi, j = gj;
         std::string raw;
 
-        while ((i>0 || j>0) && dp[i][j].parent != Parent::NONE) {
-            if (i == 0 || j == 0)
-                break;
+        while ((i>0 || j>0)) {
 
             Parent p = dp[i][j].parent;
             if (p == Parent::DIAG) {
@@ -269,38 +267,35 @@ int Align(
             }
         }
 
-        // v1 traceback
-        if (cigar) {
-            std::string raw;
-            unsigned int i = bi, j = bj;
+        // traceback
+        std::string raw;
+        unsigned int i = bi, j = bj;
 
-            while (i > 0 && j > 0) {
-                if (dp[i][j].score == 0) break;
+        while (i > 0 && j > 0) {
+            if (dp[i][j].score == 0) break;
 
-                Parent p = dp[i][j].parent;
+            Parent p = dp[i][j].parent;
 
-                if (p == Parent::DIAG) {
-                    raw.push_back(query[i - 1] == target[j - 1] ? '=' : 'X');
-                    --i; --j;
-                } else if (p == Parent::UP) {
-                    raw.push_back('I');
-                    --i;
-                } else if (p == Parent::LEFT) {
-                    raw.push_back('D');
-                    --j;
-                } else {
-                    break;
-                }
+            if (p == Parent::DIAG) {
+                raw.push_back(query[i - 1] == target[j - 1] ? '=' : 'X');
+                --i; --j;
+            } else if (p == Parent::UP) {
+                raw.push_back('I');
+                --i;
+            } else if (p == Parent::LEFT) {
+                raw.push_back('D');
+                --j;
+            } else {
+                break;
             }
-
-            std::reverse(raw.begin(), raw.end());
-            *cigar = BuildCigar(raw);
-
-            if (target_begin)
-                *target_begin = j;
         }
 
+        std::reverse(raw.begin(), raw.end());
+        if (cigar) {*cigar = BuildCigar(raw);}
 
+            if (target_begin)
+            *target_begin = j;
+        
         return best_score;
 
     }
