@@ -31,7 +31,7 @@ struct Seed {
 using MinimizerIndex =
     std::unordered_map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>>;
 
-// ---------- 1. izgradnja indeksa ---------- 
+// ---------- 1. izgradnja indeksa i pomoćne funkcije ---------- 
 
 MinimizerIndex BuildReferenceIndex(
     const std::vector<Sequence>& references,
@@ -75,17 +75,6 @@ std::string ReverseComplement(const std::string& s) {
         }
     }
     return rc;
-}
-
-//pomocna fija za chainscore
-static inline uint16_t SeedWeightFromFreq(size_t freq) {
-    // freq = koliko puta se taj minimizer pojavljuje u indeksu (hitova)
-    // rijetki minimizeri dobiju veću težinu; česti dobiju 1
-    if (freq == 0) return 1;
-    size_t w = 50 / freq;
-    if (w < 1) w = 1;
-    if (w > 50) w = 50;
-    return (uint16_t)w;
 }
 
 //pomocna fija2
@@ -135,7 +124,7 @@ std::vector<Seed> ComputeLIS(const std::vector<Seed>& hits, unsigned int k) {
                 int d1 = (int)hits[j].ref_pos - (int)hits[j].frag_pos;
                 int d2 = (int)hits[i].ref_pos - (int)hits[i].frag_pos;
 
-                if (std::abs(d1 - d2) > (int)k) continue;
+                if (std::abs(d1 - d2) > 15 *k) continue;
 
                 if (dp[j] + 1 > dp[i]) {
                     dp[i] = dp[j] + 1;
@@ -158,15 +147,26 @@ std::vector<Seed> ComputeLIS(const std::vector<Seed>& hits, unsigned int k) {
     return chain;
 }
 
+//pomocna fija zbog chainscore-a uvedeno
+static inline uint16_t SeedWeightFromFreq(size_t freq) {
+    // freq = koliko puta se taj minimizer pojavljuje u indeksu (hitova)
+    // rijetki minimizeri dobiju veću težinu; česti dobiju 1
+    if (freq == 0) return 1;
+    size_t w = 50 / freq;
+    if (w < 1) w = 1;
+    if (w > 50) w = 50;
+    return (uint16_t)w;
+}
+
 //pomocna fija4 Chain Score
 static long long ChainScore(const std::vector<Seed>& chain, unsigned int k) {
     if (chain.empty()) return std::numeric_limits<long long>::min();
 
     // Tunables
-    const long long SEED_BONUS    = 60; 
-    const long long GAP_PENALTY   = 2;
-    const long long DIAG_PENALTY  = 6;
-    const long long SPAN_BONUS    = 1;
+    const long long SEED_BONUS = 60; 
+    const long long GAP_PENALTY = 2;
+    const long long DIAG_PENALTY = 6;
+    const long long SPAN_BONUS = 1;
 
     long long score = 0;
 
@@ -177,7 +177,7 @@ static long long ChainScore(const std::vector<Seed>& chain, unsigned int k) {
 
     //span bonus - prferira chain koji više pokrije
     int q_span = (int)chain.back().frag_pos - (int)chain.front().frag_pos;
-    int r_span = (int)chain.back().ref_pos  - (int)chain.front().ref_pos;
+    int r_span = (int)chain.back().ref_pos - (int)chain.front().ref_pos;
     int span = std::min(q_span, r_span);
     if (span < 0) span = 0;
     score += SPAN_BONUS * (long long)span;
@@ -185,7 +185,7 @@ static long long ChainScore(const std::vector<Seed>& chain, unsigned int k) {
     //kazne za gap i diag
     for (size_t i = 1; i < chain.size(); ++i) {
         int dq = (int)chain[i].frag_pos - (int)chain[i-1].frag_pos;
-        int dr = (int)chain[i].ref_pos  - (int)chain[i-1].ref_pos;
+        int dr = (int)chain[i].ref_pos - (int)chain[i-1].ref_pos;
 
         int step = std::max(dq, dr);
         int step_bins = (k ? (step + (int)k - 1) / (int)k : step);
@@ -264,7 +264,7 @@ void MapFragment(
     if (seeds.empty()) return;
 
     // ---------- 2.3. chaining (LIS) ----------
-    const int DIAG_BAND = 2*k;
+    const int DIAG_BAND = 20 * k;
 
     std::sort(seeds.begin(), seeds.end(),
     [](const Seed& a, const Seed& b) {
@@ -294,7 +294,7 @@ void MapFragment(
         if (std::abs(d - last_d) <= DIAG_BAND &&
             s.ref_id == last_group.back().ref_id &&
             s.is_reverse == last_group.back().is_reverse &&
-            dr_step <= 10 * (int)k) {
+            dr_step <= 100 * (int)k) {
             last_group.push_back(s);
         } else {
             diag_groups.push_back({s});
@@ -379,7 +379,7 @@ void MapFragment(
     }
 
     // padding
-    const int PAD = 3 * k;
+    const int PAD = 3000; //stavljeno bilo na 3 * k, ali premal je za e.coli pa su sada heurisike 
 
     int fs = std::max<int>(0, frag_min - PAD);
     int fe = std::min<int>(frag_seq_used.size(), frag_max + PAD);
@@ -407,7 +407,7 @@ void MapFragment(
 
     if (cigar.empty()) return;
 
-    // ---------- 2.6. PAF ----------  
+    // ---------- 2.6. PAF -------------
 
     uint32_t query_aligned = 0;
     uint32_t target_aligned = 0;
@@ -461,11 +461,11 @@ void MapFragment(
         q_end = new_q_end;
     }
 
-    uint32_t left_clip  = q_start;
+    uint32_t left_clip = q_start;
     uint32_t right_clip = fragment.seq.size() - q_end;
 
     std::string final_cigar = cigar;
-    // if (left_clip > 0)  final_cigar = std::to_string(left_clip) + "S" + final_cigar;
+    // if (left_clip > 0) final_cigar = std::to_string(left_clip) + "S" + final_cigar;
     // if (right_clip > 0) final_cigar += std::to_string(right_clip) + "S";
 
     int mapq = 255;
